@@ -1,10 +1,9 @@
 package com.example.enguidanos.biometria_jaime;
 
-// ------------------------------------------------------------------
-// ------------------------------------------------------------------
-
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.le.BluetoothLeScanner;
@@ -12,56 +11,121 @@ import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.View;
-import com.android.volley.AuthFailureError;
-import com.android.volley.RequestQueue;
-import com.android.volley.Request;
-import com.android.volley.Response;
-import com.android.volley.VolleyError;
-import com.android.volley.toolbox.StringRequest;
-import com.android.volley.toolbox.Volley;
-
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
-
-import com.example.enguidanos.biometria_jaime.R;
-import com.example.enguidanos.biometria_jaime.TramaIBeacon;
-import com.example.enguidanos.biometria_jaime.Utilidades;
-
+import com.android.volley.RequestQueue;
+import com.android.volley.toolbox.Volley;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
-import java.util.UUID;
-
-// ------------------------------------------------------------------
-// ------------------------------------------------------------------
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
-
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
     private static final String URL_DESTINO = "http://172.20.10.14:8080/api/values";
     private static final String ETIQUETA_LOG = ">>>>";
-
+    private static final String CHANNEL_ID = "AlertaSensor";
     private RequestQueue requestQueue;
-    private static final int CODIGO_PETICION_PERMISOS = 11223344;
-
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
+    private static final int REQUEST_BLUETOOTH_PERMISSIONS = 1;
+    private static final int REQUEST_POST_NOTIFICATIONS_PERMISSION = 2;
+    private static final int INTERVALO_MAXIMO_MS = 20000;
+    private static final int LIMITE_OZONO_ALTO = 200;
+    private static final int LIMITE_OZONO_BAJO = 0;
+    private static final long INTERVALO_NOTIFICACION_MS = 15000; // Intervalo de 15 segundos entre notificaciones
+    private long ultimaNotificacion = 0;
     private BluetoothLeScanner elEscanner;
-
     private ScanCallback callbackDelEscaneo = null;
-
-    // Variables para manejar el estado de las búsquedas
     private boolean buscandoTodos = false;
     private List<String> dispositivosBuscados = new ArrayList<>();
+    private long ultimaRecepcion = 0;
+    private boolean busquedaActiva = false; // Nueva variable para controlar el estado de búsqueda
+    private Handler temporizadorHandler; // Para manejar el temporizador de desconexión
 
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
+    private LocationManager locationManager;
+    private LocationListener locationListener;
+    private String coordenadasGPS = "";
+
+    private void checkBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
+                    checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{
+                        Manifest.permission.BLUETOOTH_CONNECT,
+                        Manifest.permission.BLUETOOTH_SCAN
+                }, REQUEST_BLUETOOTH_PERMISSIONS);
+            } else {
+                inicializarBlueTooth();
+            }
+        } else {
+            inicializarBlueTooth();
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "Alerta de Sensor";
+            String description = "Notificaciones de estado del sensor de ozono";
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
+
+    private void sendAlertNotification(String title, String message) {
+        long tiempoActual = System.currentTimeMillis();
+        if (tiempoActual - ultimaNotificacion < INTERVALO_NOTIFICACION_MS) {
+            return; // No envía la notificación si se ha enviado recientemente
+        }
+        ultimaNotificacion = tiempoActual; // Actualiza la última notificación enviada
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_alert)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);
+
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        notificationManager.notify(1, builder.build());
+    }
+
+    private void iniciarTemporizadorDesconexion() {
+        if (!busquedaActiva) { // Solo iniciar el temporizador si la búsqueda está activa
+            return;
+        }
+
+        // Detenemos cualquier temporizador previo
+        if (temporizadorHandler != null) {
+            temporizadorHandler.removeCallbacksAndMessages(null);
+        }
+
+        temporizadorHandler = new Handler();
+        temporizadorHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                long tiempoActual = System.currentTimeMillis();
+                if (tiempoActual - ultimaRecepcion > INTERVALO_MAXIMO_MS) {
+                    sendAlertNotification("Alerta de sensor", "No se reciben datos del sensor de ozono");
+                }
+                iniciarTemporizadorDesconexion();
+            }
+        }, INTERVALO_MAXIMO_MS);
+    }
+
     @SuppressLint("MissingPermission")
     private void iniciarEscaneo() {
         if (callbackDelEscaneo != null) {
@@ -73,254 +137,172 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onScanResult(int callbackType, ScanResult resultado) {
                 super.onScanResult(callbackType, resultado);
-                Log.d(ETIQUETA_LOG, "onScanResult()");
-
+                ultimaRecepcion = System.currentTimeMillis(); // Actualiza la última recepción
                 BluetoothDevice dispositivo = resultado.getDevice();
                 String nombreDispositivo = dispositivo.getName();
-
                 if (buscandoTodos) {
                     mostrarInformacionDispositivoBTLE(resultado);
                 }
 
+                // Verificar si el dispositivo buscado está en la lista
                 if (dispositivosBuscados.contains(nombreDispositivo)) {
-                    Log.d("España", "Dispositivo específico encontrado: " + nombreDispositivo);
                     byte[] bytes = resultado.getScanRecord().getBytes();
                     TramaIBeacon trama = new TramaIBeacon(bytes);
                     int ozono = Utilidades.bytesToInt(trama.getMajor());
-                    int temp  = Utilidades.bytesToInt(trama.getMinor());
-                    Log.d("España", "ozono " + ozono);
-                    Log.d("España", "temperatura " + temp);
+                    int temp = Utilidades.bytesToInt(trama.getMinor());
+
+                    if (ozono < LIMITE_OZONO_BAJO || ozono > LIMITE_OZONO_ALTO) {
+                        String mensajeAlerta = String.format("Lectura de ozono fuera de rango: %d\nHora: %s\nCoordenadas: %s",
+                                ozono, obtenerHoraActual(), coordenadasGPS);
+                        sendAlertNotification("Alerta de sensor", mensajeAlerta);
+                    }
+
                     Server.guardarMedicion(String.valueOf(ozono), String.valueOf(temp), requestQueue);
-                    // Opcional: Detener la búsqueda específica después de encontrarlo
-                    // dispositivosBuscados.remove(nombreDispositivo);
-                    // if (dispositivosBuscados.isEmpty() && !buscandoTodos) {
-                    //     detenerBusquedaDispositivosBTLE();
-                    // }
                 }
-            }
 
-            @Override
-            public void onBatchScanResults(List<ScanResult> results) {
-                super.onBatchScanResults(results);
-                Log.d(ETIQUETA_LOG, "onBatchScanResults()");
-                for (ScanResult result : results) {
-                    onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, result);
-                }
-            }
-
-            @Override
-            public void onScanFailed(int errorCode) {
-                super.onScanFailed(errorCode);
-                Log.d(ETIQUETA_LOG, "onScanFailed(): Código de error = " + errorCode);
-                callbackDelEscaneo = null;
+                // Reinicia el temporizador si se recibe un resultado
+                iniciarTemporizadorDesconexion();
             }
         };
 
         List<ScanFilter> filtros = new ArrayList<>();
-
-        // Agregar filtros para dispositivos específicos
         for (String nombre : dispositivosBuscados) {
             ScanFilter filtro = new ScanFilter.Builder().setDeviceName(nombre).build();
             filtros.add(filtro);
         }
 
-        // Configurar los parámetros de escaneo
         ScanSettings settings = new ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build();
 
-        Log.d(ETIQUETA_LOG, "Iniciando escaneo BLE con " + (filtros.isEmpty() ? "sin filtros" : "filtros específicos"));
-
         elEscanner.startScan(filtros, settings, callbackDelEscaneo);
     }
 
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
     @SuppressLint("MissingPermission")
     private void detenerBusquedaDispositivosBTLE() {
-        Log.d(ETIQUETA_LOG, "Deteniendo escaneo BLE");
         if (this.callbackDelEscaneo == null) {
-            Log.d(ETIQUETA_LOG, "No hay escaneo en curso para detener.");
             return;
         }
         this.elEscanner.stopScan(this.callbackDelEscaneo);
         this.callbackDelEscaneo = null;
         buscandoTodos = false;
+        busquedaActiva = false; // Restablece el estado de búsqueda
         dispositivosBuscados.clear();
-        Log.d(ETIQUETA_LOG, "Escaneo detenido.");
-    }
 
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
-    @SuppressLint("MissingPermission")
-    private void buscarTodosLosDispositivosBTLE() {
-        Log.d(ETIQUETA_LOG, "Iniciando búsqueda de todos los dispositivos BTLE");
-        buscandoTodos = true;
-        iniciarEscaneo();
-    }
-
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
-    @SuppressLint("MissingPermission")
-    private void buscarEsteDispositivoBTLE(final String dispositivoBuscado) {
-        Log.d(ETIQUETA_LOG, "Iniciando búsqueda del dispositivo específico: " + dispositivoBuscado);
-        if (!dispositivosBuscados.contains(dispositivoBuscado)) {
-            dispositivosBuscados.add(dispositivoBuscado);
+        // Detenemos el temporizador de desconexión
+        if (temporizadorHandler != null) {
+            temporizadorHandler.removeCallbacksAndMessages(null);
         }
-        iniciarEscaneo();
     }
 
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
-    @SuppressLint("MissingPermission")
-    private void mostrarInformacionDispositivoBTLE(ScanResult resultado) {
-
-        BluetoothDevice bluetoothDevice = resultado.getDevice();
-        byte[] bytes = resultado.getScanRecord().getBytes();
-        int rssi = resultado.getRssi();
-
-        Log.d(ETIQUETA_LOG, "******************");
-        Log.d(ETIQUETA_LOG, "** DISPOSITIVO DETECTADO BTLE ****** ");
-        Log.d(ETIQUETA_LOG, "******************");
-        Log.d(ETIQUETA_LOG, "nombre = " + bluetoothDevice.getName());
-        Log.d(ETIQUETA_LOG, "toString = " + bluetoothDevice.toString());
-
-        Log.d(ETIQUETA_LOG, "dirección = " + bluetoothDevice.getAddress());
-        Log.d(ETIQUETA_LOG, "rssi = " + rssi);
-
-        Log.d(ETIQUETA_LOG, "bytes = " + new String(bytes));
-        Log.d(ETIQUETA_LOG, "bytes (" + bytes.length + ") = " + Utilidades.bytesToHexString(bytes));
-
-        TramaIBeacon tib = new TramaIBeacon(bytes);
-
-        Log.d(ETIQUETA_LOG, "----------------------------------------------------");
-        Log.d(ETIQUETA_LOG, "prefijo  = " + Utilidades.bytesToHexString(tib.getPrefijo()));
-        Log.d(ETIQUETA_LOG, "advFlags = " + Utilidades.bytesToHexString(tib.getAdvFlags()));
-        Log.d(ETIQUETA_LOG, "advHeader = " + Utilidades.bytesToHexString(tib.getAdvHeader()));
-        Log.d(ETIQUETA_LOG, "companyID = " + Utilidades.bytesToHexString(tib.getCompanyID()));
-        Log.d(ETIQUETA_LOG, "iBeacon type = " + Integer.toHexString(tib.getiBeaconType()));
-        Log.d(ETIQUETA_LOG, "iBeacon length 0x = " + Integer.toHexString(tib.getiBeaconLength()) + " ( " + tib.getiBeaconLength() + " ) ");
-        Log.d(ETIQUETA_LOG, "uuid  = " + Utilidades.bytesToHexString(tib.getUUID()));
-        Log.d(ETIQUETA_LOG, "uuid  = " + Utilidades.bytesToString(tib.getUUID()));
-        Log.d(ETIQUETA_LOG, "major  = " + Utilidades.bytesToHexString(tib.getMajor()) + "( " + Utilidades.bytesToInt(tib.getMajor()) + " ) ");
-        Log.d(ETIQUETA_LOG, "minor  = " + Utilidades.bytesToHexString(tib.getMinor()) + "( " + Utilidades.bytesToInt(tib.getMinor()) + " ) ");
-        Log.d(ETIQUETA_LOG, "txPower  = " + Integer.toHexString(tib.getTxPower()) + " ( " + tib.getTxPower() + " )");
-        Log.d(ETIQUETA_LOG, "******************");
-
-    }
-
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
     @SuppressLint("MissingPermission")
     private void inicializarBlueTooth() {
-        Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): obtenemos adaptador BT ");
-
         BluetoothAdapter bta = BluetoothAdapter.getDefaultAdapter();
-
-        Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): habilitamos adaptador BT ");
-
         if (!bta.isEnabled()) {
             bta.enable();
         }
-
-        Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): habilitado =  " + bta.isEnabled());
-
-        Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): estado =  " + bta.getState());
-
-        Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): obtenemos escaner btle ");
-
         this.elEscanner = bta.getBluetoothLeScanner();
+        inicializarGPS(); // Inicia la captura de GPS
+    }
 
-        if (this.elEscanner == null) {
-            Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): Socorro: NO hemos obtenido escaner btle  !!!!");
-        }
+    private void inicializarGPS() {
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        locationListener = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location location) {
+                coordenadasGPS = location.getLatitude() + ", " + location.getLongitude();
+            }
 
-        Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): voy a pedir permisos (si no los tuviera) !!!!");
+            @Override
+            public void onStatusChanged(String provider, int status, Bundle extras) {}
 
-        if (
-                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED
-                        || ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED
-                        || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                    MainActivity.this,
-                    new String[]{Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN, Manifest.permission.ACCESS_FINE_LOCATION},
-                    CODIGO_PETICION_PERMISOS);
+            @Override
+            public void onProviderEnabled(String provider) {}
+
+            @Override
+            public void onProviderDisabled(String provider) {}
+        };
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 0, locationListener);
         } else {
-            Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): parece que YA tengo los permisos necesarios !!!!");
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
         }
     }
 
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
+    private String obtenerHoraActual() {
+        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+        return sdf.format(new Date());
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-
-
-
-        Log.d(ETIQUETA_LOG, "onCreate(): empieza ");
-
-        inicializarBlueTooth();
-
-        Log.d(ETIQUETA_LOG, "onCreate(): termina ");
+        createNotificationChannel();
+        checkBluetoothPermissions();
         requestQueue = Volley.newRequestQueue(this);
-
-        // Enviar una medición (esto puede estar en un temporizador o en otra parte de tu código)
+        iniciarTemporizadorDesconexion();
         Server.guardarMedicion("100", "25", requestQueue);
-    }
 
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                                           int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        switch (requestCode) {
-            case CODIGO_PETICION_PERMISOS:
-                // Si la petición es cancelada, los arrays de resultados están vacíos.
-                if (grantResults.length > 0 &&
-                        grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                    Log.d(ETIQUETA_LOG, "onRequestPermissionResult(): permisos concedidos  !!!!");
-                    // Continuar con la acción que requiere permisos.
-                } else {
-
-                    Log.d(ETIQUETA_LOG, "onRequestPermissionResult(): Socorro: permisos NO concedidos  !!!!");
-                    // Manejar la falta de permisos, posiblemente deshabilitando funcionalidades.
-
-                }
-                return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS_PERMISSION);
+            }
         }
-        // Otras 'case' para verificar otros permisos que la app pudiera solicitar.
     }
 
-    // --------------------------------------------------------------
-    // --------------------------------------------------------------
-    // Botones
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_BLUETOOTH_PERMISSIONS && grantResults.length > 0) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                inicializarBlueTooth();
+            }
+        } else if (requestCode == REQUEST_POST_NOTIFICATIONS_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(ETIQUETA_LOG, "Permiso de notificación concedido.");
+            }
+        } else if (requestCode == 1) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                inicializarGPS();
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void mostrarInformacionDispositivoBTLE(ScanResult resultado) {
+        BluetoothDevice dispositivo = resultado.getDevice();
+        Log.d(ETIQUETA_LOG, "Dispositivo: " + dispositivo.getName() + ", RSSI: " + resultado.getRssi());
+    }
+
+    @SuppressLint("MissingPermission")
+    private void buscarTodosLosDispositivosBTLE() {
+        buscandoTodos = true;
+        busquedaActiva = true; // Marcamos la búsqueda como activa
+        iniciarEscaneo();
+        iniciarTemporizadorDesconexion(); // Iniciamos el temporizador de desconexión
+    }
+
+    @SuppressLint("MissingPermission")
+    private void buscarEsteDispositivoBTLE(final String dispositivoBuscado) {
+        if (!dispositivosBuscados.contains(dispositivoBuscado)) {
+            dispositivosBuscados.add(dispositivoBuscado);
+        }
+        busquedaActiva = true; // Marcamos la búsqueda como activa
+        iniciarEscaneo();
+        iniciarTemporizadorDesconexion(); // Iniciamos el temporizador de desconexión
+    }
+
     public void botonBuscarDispositivosBTLEPulsado(View v) {
-        Log.d(ETIQUETA_LOG, "Botón 'Buscar Todos los Dispositivos BTLE' pulsado");
         buscarTodosLosDispositivosBTLE();
     }
 
     public void botonBuscarNuestroDispositivoBTLEPulsado(View v) {
-        Log.d(ETIQUETA_LOG, "Botón 'Buscar Nuestro Dispositivo BTLE' pulsado");
-        buscarEsteDispositivoBTLE("JAINIS-ES-UN-SOL");
+        buscarEsteDispositivoBTLE("GTI-3A");
     }
 
     public void botonDetenerBusquedaDispositivosBTLEPulsado(View v) {
-        Log.d(ETIQUETA_LOG, "Botón 'Detener Búsqueda Dispositivos BTLE' pulsado");
         detenerBusquedaDispositivosBTLE();
     }
-
-
-
-
-} // class
-// --------------------------------------------------------------
-// --------------------------------------------------------------
-// --------------------------------------------------------------
-// --------------------------------------------------------------
+}
