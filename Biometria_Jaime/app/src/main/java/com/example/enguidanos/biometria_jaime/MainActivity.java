@@ -24,15 +24,12 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
-
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-
 import com.example.enguidanos.biometria_jaime.R;
 import com.example.enguidanos.biometria_jaime.TramaIBeacon;
 import com.example.enguidanos.biometria_jaime.Utilidades;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
