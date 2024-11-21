@@ -1,5 +1,6 @@
 package com.example.enguidanos.biometria_jaime;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.widget.TextView;
 
@@ -23,7 +24,7 @@ public class AccesoHuella extends AppCompatActivity {
         // Inicializar el TextView
         statusText = findViewById(R.id.statusText1);
 
-        // Iniciar la autenticación biométrica al abrir la app
+        // Iniciar autenticación biométrica
         authenticateUser();
     }
 
@@ -33,10 +34,9 @@ public class AccesoHuella extends AppCompatActivity {
     private void authenticateUser() {
         BiometricManager biometricManager = BiometricManager.from(this);
 
-        // Verificar si la biometría es soportada en el dispositivo
+        // Verificar compatibilidad con biometría
         if (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                 != BiometricManager.BIOMETRIC_SUCCESS) {
-            // Mostrar mensaje si no es posible usar biometría
             statusText.setText("El dispositivo no es compatible con autenticación biométrica.");
             return;
         }
@@ -44,7 +44,7 @@ public class AccesoHuella extends AppCompatActivity {
         // Crear el executor para manejar los callbacks
         Executor executor = ContextCompat.getMainExecutor(this);
 
-        // Crear el objeto BiometricPrompt
+        // Configurar el BiometricPrompt
         BiometricPrompt biometricPrompt = new BiometricPrompt(this, executor,
                 new BiometricPrompt.AuthenticationCallback() {
                     @Override
@@ -52,7 +52,11 @@ public class AccesoHuella extends AppCompatActivity {
                         super.onAuthenticationSucceeded(result);
                         // Mostrar mensaje de éxito
                         statusText.setText("¡Autenticación exitosa! Bienvenido.");
-                        // Aquí puedes iniciar una nueva actividad o desbloquear contenido.
+
+                        // Navegar a MainActivity
+                        Intent intent = new Intent(AccesoHuella.this, MainActivity.class);
+                        startActivity(intent);
+                        finish(); // Finalizar esta actividad para evitar volver a la pantalla de autenticación
                     }
 
                     @Override
@@ -60,7 +64,7 @@ public class AccesoHuella extends AppCompatActivity {
                         super.onAuthenticationError(errorCode, errString);
                         // Mostrar mensaje de error y cerrar la aplicación
                         statusText.setText("Error: " + errString);
-                        finish(); // Cierra la app si hay un error
+                        finish(); // Cerrar la app si hay un error crítico
                     }
 
                     @Override
@@ -71,7 +75,7 @@ public class AccesoHuella extends AppCompatActivity {
                     }
                 });
 
-        // Crear el objeto PromptInfo para configurar el diálogo de autenticación
+        // Configurar el diálogo de autenticación
         BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Autenticación Biométrica")
                 .setSubtitle("Verifica tu identidad")
@@ -79,7 +83,7 @@ public class AccesoHuella extends AppCompatActivity {
                 .setNegativeButtonText("Salir")
                 .build();
 
-        // Iniciar la autenticación
+        // Mostrar el diálogo de autenticación
         biometricPrompt.authenticate(promptInfo);
     }
 }
