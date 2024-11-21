@@ -3,8 +3,13 @@ package com.example.enguidanos.biometria_jaime;
 // ------------------------------------------------------------------
 // ------------------------------------------------------------------
 
+import static androidx.core.location.LocationManagerCompat.requestLocationUpdates;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.le.BluetoothLeScanner;
@@ -12,9 +17,18 @@ import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
+import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import com.android.volley.AuthFailureError;
@@ -24,14 +38,21 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
+
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import com.example.enguidanos.biometria_jaime.R;
 import com.example.enguidanos.biometria_jaime.TramaIBeacon;
 import com.example.enguidanos.biometria_jaime.Utilidades;
+
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 // ------------------------------------------------------------------
@@ -247,6 +268,14 @@ public class MainActivity extends AppCompatActivity {
             Log.d(ETIQUETA_LOG, "inicializarBlueTooth(): parece que YA tengo los permisos necesarios !!!!");
         }
     }
+    //historia 21
+    private static final int LOCATION_PERMISSION_CODE = 100;
+    private static final String CHANNEL_ID = "ozone_alert_channel";
+    private static final double OZONE_THRESHOLD = 100.0; // Límite en µg/m³
+
+    private LocationManager locationManager;
+    private double currentLatitude = 0.0;
+    private double currentLongitude = 0.0;
 
     // --------------------------------------------------------------
     // --------------------------------------------------------------
@@ -254,10 +283,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-
-
-
         Log.d(ETIQUETA_LOG, "onCreate(): empieza ");
 
         inicializarBlueTooth();
@@ -267,13 +292,19 @@ public class MainActivity extends AppCompatActivity {
 
         // Enviar una medición (esto puede estar en un temporizador o en otra parte de tu código)
         Server.guardarMedicion("100", "25", requestQueue);
+
+        // Configuración inicial
+        createNotificationChannel();
+        requestLocationUpdates();
+
+        // Simulación de niveles de ozono
+        simulateOzoneMonitoring();
     }
 
     // --------------------------------------------------------------
     // --------------------------------------------------------------
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                                           int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         switch (requestCode) {
@@ -290,8 +321,16 @@ public class MainActivity extends AppCompatActivity {
                     // Manejar la falta de permisos, posiblemente deshabilitando funcionalidades.
 
                 }
+
                 return;
+
         }
+        if (requestCode == LOCATION_PERMISSION_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                requestLocationUpdates();
+            }
+        }
+
         // Otras 'case' para verificar otros permisos que la app pudiera solicitar.
     }
 
@@ -313,6 +352,85 @@ public class MainActivity extends AppCompatActivity {
         detenerBusquedaDispositivosBTLE();
     }
 
+    private void requestLocationUpdates() {
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_CODE);
+            return;
+        }
+
+        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 10, new LocationListener() {
+            @Override
+            public void onLocationChanged(@NonNull Location location) {
+                currentLatitude = location.getLatitude();
+                currentLongitude = location.getLongitude();
+            }
+        });
+    }
+
+    private void simulateOzoneMonitoring() {
+        Handler handler = new Handler(Looper.getMainLooper());
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                double simulatedOzoneLevel = Math.random() * 200; // Simulación de 0 a 200 µg/m³
+                Log.d("OzoneAlert", "Nivel de ozono: " + simulatedOzoneLevel);
+
+                if (simulatedOzoneLevel > OZONE_THRESHOLD) {
+                    sendAlert(simulatedOzoneLevel);
+                }
+                Log.d("OzoneAlert", "Nivel de ozono detectado: " + simulatedOzoneLevel);
+                Log.d("OzoneAlert", "¿Se activa la alerta? " + (simulatedOzoneLevel > OZONE_THRESHOLD));
+                handler.postDelayed(this, 10000); // Verificar cada 10 segundos
+            }
+        }, 10000);
+    }
+
+    private void sendAlert(double ozoneLevel) {
+        String timestamp = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
+        String message = String.format(Locale.getDefault(),
+                "¡Alerta! Nivel de ozono: %.2f µg/m³\nUbicación: %.6f, %.6f\nHora: %s",
+                ozoneLevel, currentLatitude, currentLongitude, timestamp);
+
+        // Enviar notificación
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("Alerta de Ozono")
+                .setContentText("Nivel crítico detectado. Toca para más detalles.")
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setSound(getAlertSound());
+
+        Intent intent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        builder.setContentIntent(pendingIntent);
+
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        notificationManager.notify(1, builder.build());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
+    }
+
+    private Uri getAlertSound() {
+        return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "Ozone Alert Channel";
+            String description = "Canal para alertas de ozono";
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
 
 
 
