@@ -12,6 +12,7 @@ import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
@@ -21,6 +22,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
@@ -31,8 +35,12 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import com.example.enguidanos.biometria_jaime.ForegroundService; // Importa la clase
 
 public class MainActivity extends AppCompatActivity {
+    private TextView dis;  // TextView para mostrar la distancia
+    private Button btnCalcular; // Botón para calcular la distancia
+    private Button btnEstado;
     private static final String URL_DESTINO = "http://172.20.10.14:8080/api/values";
     private static final String ETIQUETA_LOG = ">>>>";
     private static final String CHANNEL_ID = "AlertaSensor";
@@ -66,10 +74,22 @@ public class MainActivity extends AppCompatActivity {
                 }, REQUEST_BLUETOOTH_PERMISSIONS);
             } else {
                 inicializarBlueTooth();
+
+                Intent serviceIntent = new Intent(this, ForegroundService.class);
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    // Usar startForegroundService en Android 8.0+ para iniciar el servicio en primer plano
+                    startForegroundService(serviceIntent);
+                } else {
+                    // Para versiones anteriores de Android, simplemente usamos startService
+                    startService(serviceIntent);
+                }
+
             }
         } else {
             inicializarBlueTooth();
         }
+        Intent intent = new Intent(this, ForegroundService.class);
+        startService(intent);
     }
 
     private void createNotificationChannel() {
@@ -250,6 +270,64 @@ public class MainActivity extends AppCompatActivity {
                 requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS_PERMISSION);
             }
         }
+
+        dis = findViewById(R.id.distanciavalue); // Obtener el TextView para mostrar la distancia
+        btnCalcular = findViewById(R.id.btnCalcular); // Botón para calcular la distancia
+
+        btnEstado = findViewById(R.id.btnEstado1);
+        btnCalcular.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // Aquí es donde se llama a la función cDistancia con tus valores
+                int txPower = -59;  // Valor de txPower de ejemplo (en dBm)
+                int rssi = -70;     // Valor de rssi de ejemplo (en dBm)
+
+                // Llamada a la función cDistancia
+                double d = cDistancia(txPower, rssi, 2);  // Calcula la distancia
+
+                // Llamada a la función para mostrar la distancia
+                mostrarDistancia(d);  // Muestra la distancia calculada
+            }
+        });
+        btnEstado.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                setContentView(R.layout.prueba_notificaciones);
+
+            }
+
+    });
+
+                                       }
+    // Función para calcular la distancia con el modelo de propagación ajustado
+    public double cDistancia(int txPower, int rssi, double n) {
+        if (rssi == 0) {
+            return -1.0; // Valor no válido, la señal no se detecta
+        }
+
+        double ratio = rssi * 1.0 / txPower;
+        if (ratio < 1.0) {
+            return Math.pow(ratio, 10);
+        } else {
+            double distance = (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
+            return distance;
+        }
+    }
+
+    // Función para mostrar la distancia en el TextView y mostrar el mensaje apropiado
+    private void mostrarDistancia(double distancia) {
+        if (distancia == -1) {
+            dis.setText("No se detecta la señal");  // Si no se detecta la señal
+        } else if (distancia < 2) {
+            dis.setText("Estás al lado del sensor");
+        } else if (distancia >= 2 && distancia <= 5) {
+            dis.setText("Estás cerca del sensor");
+        } else if (distancia > 5) {
+            dis.setText("Estás lejos del sensor");
+        }
+
+        // Formatear la distancia a 2 decimales para mostrarla
+        dis.setText(String.format("Distancia: %.2f metros", distancia));
     }
 
     @Override
@@ -299,10 +377,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void botonBuscarNuestroDispositivoBTLEPulsado(View v) {
-        buscarEsteDispositivoBTLE("GTI-3A");
+        buscarEsteDispositivoBTLE("JAINIS-ES-UN-SOL");
     }
 
     public void botonDetenerBusquedaDispositivosBTLEPulsado(View v) {
         detenerBusquedaDispositivosBTLE();
     }
+
 }
