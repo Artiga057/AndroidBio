@@ -377,7 +377,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void botonBuscarNuestroDispositivoBTLEPulsado(View v) {
-        buscarEsteDispositivoBTLE("JAINIS-ES-UN-SOL");
+        buscarEsteDispositivoBTLE("HOLA SOY ALEX 22");
     }
 
     public void botonDetenerBusquedaDispositivosBTLEPulsado(View v) {
