@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Server {
-    private static final String URL = "http://172.20.10.14/prueba/guardarMedicion.php?";
+    private static final String URL = "http://192.168.1.116/prueba/guardarMedicion.php?";
     public static void guardarMedicion(final String ozono, final String temperatura, RequestQueue requestQueue) {
         StringRequest stringRequest = new StringRequest(
                 Request.Method.POST,    // Método HTTP (POST).

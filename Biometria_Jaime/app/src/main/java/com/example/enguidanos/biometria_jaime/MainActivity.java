@@ -31,6 +31,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
+
 import com.android.volley.AuthFailureError;
 import com.android.volley.RequestQueue;
 import com.android.volley.Request;
@@ -72,10 +75,15 @@ public class MainActivity extends AppCompatActivity {
     // --------------------------------------------------------------
     private BluetoothLeScanner elEscanner;
 
+    private TextView dis;  // TextView para mostrar la distancia
+    private Button btnCalcular; // Botón para calcular la distancia
+
+
     private ScanCallback callbackDelEscaneo = null;
 
     // Variables para manejar el estado de las búsquedas
     private boolean buscandoTodos = false;
+
     private List<String> dispositivosBuscados = new ArrayList<>();
 
     // --------------------------------------------------------------
@@ -175,6 +183,7 @@ public class MainActivity extends AppCompatActivity {
         Log.d(ETIQUETA_LOG, "Iniciando búsqueda de todos los dispositivos BTLE");
         buscandoTodos = true;
         iniciarEscaneo();
+
     }
 
     // --------------------------------------------------------------
@@ -277,6 +286,8 @@ public class MainActivity extends AppCompatActivity {
     private double currentLatitude = 0.0;
     private double currentLongitude = 0.0;
 
+
+
     // --------------------------------------------------------------
     // --------------------------------------------------------------
     @Override
@@ -294,15 +305,68 @@ public class MainActivity extends AppCompatActivity {
         Server.guardarMedicion("100", "25", requestQueue);
 
         // Configuración inicial
-        createNotificationChannel();
+        /*createNotificationChannel();
         requestLocationUpdates();
 
         // Simulación de niveles de ozono
         simulateOzoneMonitoring();
+*/
+        dis = findViewById(R.id.distanciavalue); // Obtener el TextView para mostrar la distancia
+        btnCalcular = findViewById(R.id.btnCalcular); // Botón para calcular la distancia
+
+        // Configurar el botón para realizar el cálculo de distancia
+        btnCalcular.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // Aquí es donde se llama a la función cDistancia con tus valores
+                int txPower = -59;  // Valor de txPower de ejemplo (en dBm)
+                int rssi = -70;     // Valor de rssi de ejemplo (en dBm)
+
+                // Llamada a la función cDistancia
+                double d = cDistancia(txPower, rssi, 2);  // Calcula la distancia
+
+                // Llamada a la función para mostrar la distancia
+                mostrarDistancia(d);  // Muestra la distancia calculada
+            }
+        });
+
+
+
     }
 
     // --------------------------------------------------------------
     // --------------------------------------------------------------
+    // Función para calcular la distancia con el modelo de propagación ajustado
+    public double cDistancia(int txPower, int rssi, double n) {
+        if (rssi == 0) {
+            return -1.0; // Valor no válido, la señal no se detecta
+        }
+
+        double ratio = rssi * 1.0 / txPower;
+        if (ratio < 1.0) {
+            return Math.pow(ratio, 10);
+        } else {
+            double distance = (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
+            return distance;
+        }
+    }
+
+    // Función para mostrar la distancia en el TextView y mostrar el mensaje apropiado
+    private void mostrarDistancia(double distancia) {
+        if (distancia == -1) {
+            dis.setText("No se detecta la señal");  // Si no se detecta la señal
+        } else if (distancia < 2) {
+            dis.setText("Estás al lado del sensor");
+        } else if (distancia >= 2 && distancia <= 5) {
+            dis.setText("Estás cerca del sensor");
+        } else if (distancia > 5) {
+            dis.setText("Estás lejos del sensor");
+        }
+
+        // Formatear la distancia a 2 decimales para mostrarla
+        dis.setText(String.format("Distancia: %.2f metros", distancia));
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -369,7 +433,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void simulateOzoneMonitoring() {
+    /*private void simulateOzoneMonitoring() {
         Handler handler = new Handler(Looper.getMainLooper());
         handler.postDelayed(new Runnable() {
             @Override
@@ -386,8 +450,9 @@ public class MainActivity extends AppCompatActivity {
             }
         }, 10000);
     }
+    */
 
-    private void sendAlert(double ozoneLevel) {
+   /* private void sendAlert(double ozoneLevel) {
         String timestamp = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
         String message = String.format(Locale.getDefault(),
                 "¡Alerta! Nivel de ozono: %.2f µg/m³\nUbicación: %.6f, %.6f\nHora: %s",
@@ -418,7 +483,6 @@ public class MainActivity extends AppCompatActivity {
     private Uri getAlertSound() {
         return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
     }
-
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             CharSequence name = "Ozone Alert Channel";
@@ -432,7 +496,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
+*/
 
 } // class
 // --------------------------------------------------------------
