@@ -41,6 +41,8 @@ dependencies {
     implementation ("androidx.biometric:biometric:1.2.0-alpha05")
     implementation ("androidx.core:core:1.12.0")
     implementation ("androidx.lifecycle:lifecycle-runtime:2.6.1")
+    implementation ("com.google.android.gms:play-services-location:21.0.1")
+
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 
