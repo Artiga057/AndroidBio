@@ -26,12 +26,14 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import com.android.volley.RequestQueue;
 import com.android.volley.toolbox.Volley;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -39,7 +41,7 @@ import com.example.enguidanos.biometria_jaime.ForegroundService; // Importa la c
 
 public class MainActivity extends AppCompatActivity {
     private TextView dis;  // TextView para mostrar la distancia
-    private Button btnCalcular; // Botón para calcular la distancia
+    private Button buttonDistancia; // Botón para calcular la distancia
     private Button btnEstado;
     private static final String URL_DESTINO = "http://172.20.10.14:8080/api/values";
     private static final String ETIQUETA_LOG = ">>>>";
@@ -63,6 +65,42 @@ public class MainActivity extends AppCompatActivity {
     private LocationManager locationManager;
     private LocationListener locationListener;
     private String coordenadasGPS = "";
+
+    private Location lastLocation = null; // Última ubicación registrada para medir distancia
+    private double totalDistance = 0.0; // Distancia total acumulada
+    private void reiniciarContador() {
+        totalDistance = 0.0;
+        lastLocation = null;
+        if (dis != null) {
+            dis.setText("Distancia total recorrida: 0.00 km");
+        }
+    }
+
+    private void programarReinicioDiario() {
+        Handler handler = new Handler();
+        Runnable runnable = new Runnable() {
+            @Override
+            public void run() {
+                // Obtén la hora actual
+                Calendar calendar = Calendar.getInstance();
+                int hour = calendar.get(Calendar.HOUR_OF_DAY);
+                int minute = calendar.get(Calendar.MINUTE);
+                int second = calendar.get(Calendar.SECOND);
+
+                // Verifica si es 23:59:59
+                if (hour == 23 && minute == 59 && second >= 50) {
+                    reiniciarContador();
+                }
+
+                // Reprograma el Runnable para ejecutarse cada segundo
+                handler.postDelayed(this, 1000);
+            }
+        };
+
+        // Inicia el Runnable
+        handler.post(runnable);
+    }
+
 
     private void checkBluetoothPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -90,6 +128,15 @@ public class MainActivity extends AppCompatActivity {
         }
         Intent intent = new Intent(this, ForegroundService.class);
         startService(intent);
+    }
+    private String calcularDistanciaPorRSSI(int rssi) {
+        if (rssi >= -50) {
+            return "Cerca";
+        } else if (rssi >= -70) {
+            return "Media";
+        } else {
+            return "Lejos";
+        }
     }
 
     private void createNotificationChannel() {
@@ -160,6 +207,7 @@ public class MainActivity extends AppCompatActivity {
                 ultimaRecepcion = System.currentTimeMillis(); // Actualiza la última recepción
                 BluetoothDevice dispositivo = resultado.getDevice();
                 String nombreDispositivo = dispositivo.getName();
+
                 if (buscandoTodos) {
                     mostrarInformacionDispositivoBTLE(resultado);
                 }
@@ -179,6 +227,13 @@ public class MainActivity extends AppCompatActivity {
 
                     Server.guardarMedicion(String.valueOf(ozono), String.valueOf(temp), requestQueue);
                 }
+                if ("HOLA SOY ALEX 22".equals(nombreDispositivo)) { // Verifica si es el dispositivo buscado
+                    int rssi = resultado.getRssi(); // Obtiene el RSSI
+                    String distancia = calcularDistanciaPorRSSI(rssi); // Traduce RSSI a distancia
+                    TextView distanciaView = findViewById(R.id.distanciavalue); // Referencia al TextView
+                    distanciaView.setText(String.format("Distancia al nodo: %s", distancia)); // Actualiza el texto
+                }
+
 
                 // Reinicia el temporizador si se recibe un resultado
                 iniciarTemporizadorDesconexion();
@@ -231,6 +286,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onLocationChanged(Location location) {
                 coordenadasGPS = location.getLatitude() + ", " + location.getLongitude();
+                actualizarDistancia(location); // Calcula la distancia con la nueva ubicación
             }
 
             @Override
@@ -243,11 +299,20 @@ public class MainActivity extends AppCompatActivity {
             public void onProviderDisabled(String provider) {}
         };
 
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 0, locationListener);
         } else {
             requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
         }
+    }
+
+    private void actualizarDistancia(Location nuevaLocation) {
+        if (lastLocation != null) {
+            float distancia = lastLocation.distanceTo(nuevaLocation); // Calcula distancia en metros
+            totalDistance += distancia / 1000.0; // Convierte a kilómetros y acumula
+        }
+        lastLocation = nuevaLocation;
     }
 
     private String obtenerHoraActual() {
@@ -271,64 +336,36 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        dis = findViewById(R.id.distanciavalue); // Obtener el TextView para mostrar la distancia
-        btnCalcular = findViewById(R.id.btnCalcular); // Botón para calcular la distancia
-
+        dis = findViewById(R.id.distanceTextView); // Obtener el TextView para mostrar la distancia
+        buttonDistancia = findViewById(R.id.buttonDistancia); // Botón para calcular la distancia
         btnEstado = findViewById(R.id.btnEstado1);
-        btnCalcular.setOnClickListener(new View.OnClickListener() {
+
+        buttonDistancia.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                // Aquí es donde se llama a la función cDistancia con tus valores
-                int txPower = -59;  // Valor de txPower de ejemplo (en dBm)
-                int rssi = -70;     // Valor de rssi de ejemplo (en dBm)
-
-                // Llamada a la función cDistancia
-                double d = cDistancia(txPower, rssi, 2);  // Calcula la distancia
-
-                // Llamada a la función para mostrar la distancia
-                mostrarDistancia(d);  // Muestra la distancia calculada
+                dis.setText(String.format("Distancia total recorrida: %.2f km", totalDistance));
             }
         });
+
         btnEstado.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 setContentView(R.layout.prueba_notificaciones);
-
             }
+        });
 
-    });
+        Button btnCalcular = findViewById(R.id.btnCalcular);
+        btnCalcular.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                buscarEsteDispositivoBTLE("HOLA SOY ALEX 22"); // Inicia el escaneo para el dispositivo específico
+            }
+        });
 
-                                       }
-    // Función para calcular la distancia con el modelo de propagación ajustado
-    public double cDistancia(int txPower, int rssi, double n) {
-        if (rssi == 0) {
-            return -1.0; // Valor no válido, la señal no se detecta
-        }
-
-        double ratio = rssi * 1.0 / txPower;
-        if (ratio < 1.0) {
-            return Math.pow(ratio, 10);
-        } else {
-            double distance = (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
-            return distance;
-        }
+        // Llama al método para programar el reinicio diario
+        programarReinicioDiario();
     }
 
-    // Función para mostrar la distancia en el TextView y mostrar el mensaje apropiado
-    private void mostrarDistancia(double distancia) {
-        if (distancia == -1) {
-            dis.setText("No se detecta la señal");  // Si no se detecta la señal
-        } else if (distancia < 2) {
-            dis.setText("Estás al lado del sensor");
-        } else if (distancia >= 2 && distancia <= 5) {
-            dis.setText("Estás cerca del sensor");
-        } else if (distancia > 5) {
-            dis.setText("Estás lejos del sensor");
-        }
-
-        // Formatear la distancia a 2 decimales para mostrarla
-        dis.setText(String.format("Distancia: %.2f metros", distancia));
-    }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -372,6 +409,7 @@ public class MainActivity extends AppCompatActivity {
         iniciarTemporizadorDesconexion(); // Iniciamos el temporizador de desconexión
     }
 
+
     public void botonBuscarDispositivosBTLEPulsado(View v) {
         buscarTodosLosDispositivosBTLE();
     }
@@ -383,5 +421,4 @@ public class MainActivity extends AppCompatActivity {
     public void botonDetenerBusquedaDispositivosBTLEPulsado(View v) {
         detenerBusquedaDispositivosBTLE();
     }
-
 }

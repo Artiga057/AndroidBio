@@ -30,13 +30,14 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         />
+
     <Button
         android:id="@+id/btnCalcular"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Calcular Distancia"
         android:layout_centerHorizontal="true"
-        android:layout_marginTop="100dp"/>
+        android:layout_marginTop="100dp"
+        android:text="Calcular Distancia" />
 
     <TextView
         android:id="@+id/distanciavalue"
@@ -52,8 +53,30 @@
         android:id="@+id/btnEstado1"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Estado"
         android:layout_centerHorizontal="true"
-        android:layout_marginTop="100dp"/>
+        android:layout_marginTop="100dp"
+        android:text="Estado" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/distanceTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Distancia: 0.00 km"
+            android:textSize="24sp"
+            android:padding="16dp" />
+
+        <Button
+            android:id="@+id/buttonDistancia"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Button" />
+    </LinearLayout>
 
 </android.widget.LinearLayout>
