@@ -50,10 +50,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+<<<<<<< Updated upstream
         <activity
             android:name=".QRScanner"
             android:exported="true"> <!-- Atributo añadido aquí -->
         </activity>
+=======
+>>>>>>> Stashed changes
 
     </application>
 

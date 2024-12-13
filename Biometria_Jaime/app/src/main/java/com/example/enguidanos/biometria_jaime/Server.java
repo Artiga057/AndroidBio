@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Server {
+<<<<<<< Updated upstream
     private static final String URL = "http://10.236.38.232/Prueba/src/api/guardarMedicion.php?";
     private static final String URL2 = "http://10.236.38.232/sp3/src/api/guardarsonda.php";
     private static final int INTERVALO_ENVIO_MS = 10000; // Intervalo de 10 segundos
@@ -22,6 +23,9 @@ public class Server {
     private static final Handler handler = new Handler(); // Handler para manejar tareas programadas
 
     // Método para guardar medición con control de tiempo
+=======
+    private static final String URL = "http://192.168.1.79/prueba/src/api/guardarMedicion.php?";
+>>>>>>> Stashed changes
     public static void guardarMedicion(final String ozono, final String temperatura, RequestQueue requestQueue) {
         long tiempoActual = System.currentTimeMillis();
 
