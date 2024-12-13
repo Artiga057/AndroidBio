@@ -364,8 +364,23 @@ public class MainActivity extends AppCompatActivity {
 
         // Llama al método para programar el reinicio diario
         programarReinicioDiario();
-    }
 
+        // Vincular botón al código
+        Button btnScanQr = findViewById(R.id.btnScanQr);
+
+        // Configurar evento de clic
+        btnScanQr.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                lanzarQR(v);
+            }
+        });
+
+    }
+    public void lanzarQR(View view){
+        Intent i = new Intent(this, QRScanner.class);
+        startActivity(i);
+    }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -420,5 +435,18 @@ public class MainActivity extends AppCompatActivity {
 
     public void botonDetenerBusquedaDispositivosBTLEPulsado(View v) {
         detenerBusquedaDispositivosBTLE();
+    }
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == 1 && resultCode == RESULT_OK) {
+            // Obtener el dispositivo buscado desde el resultado
+            String dispositivoBuscado = data.getStringExtra("dispositivoBuscado");
+            if (dispositivoBuscado != null) {
+                // Ejecutar la búsqueda en Bluetooth
+                buscarEsteDispositivoBTLE(dispositivoBuscado);
+            }
+        }
     }
 }

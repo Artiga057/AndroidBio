@@ -37,17 +37,17 @@
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="100dp"
-        android:text="Calcular Distancia" />
+        android:text="Calcular Distancia al sensor" />
 
     <TextView
         android:id="@+id/distanciavalue"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Resultado de la distancia"
-        android:textSize="18sp"
         android:layout_below="@id/btnCalcular"
+        android:layout_centerHorizontal="true"
         android:layout_marginTop="50dp"
-        android:layout_centerHorizontal="true"/>
+        android:text="Distancia al sensor"
+        android:textSize="18sp" />
 
     <Button
         android:id="@+id/btnEstado1"
@@ -56,6 +56,13 @@
         android:layout_centerHorizontal="true"
         android:layout_marginTop="100dp"
         android:text="Estado" />
+    <Button
+        android:id="@+id/btnScanQr"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Escanear QR"
+        android:layout_marginTop="16dp"
+        android:layout_gravity="center" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -76,7 +83,7 @@
             android:id="@+id/buttonDistancia"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Button" />
+            android:text="Distancia Recorrida" />
     </LinearLayout>
 
 </android.widget.LinearLayout>

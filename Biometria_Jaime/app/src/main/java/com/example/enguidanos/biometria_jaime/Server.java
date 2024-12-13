@@ -14,7 +14,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Server {
-    private static final String URL = "http://10.237.52.28/Prueba/src/api/guardarMedicion.php?";
+    private static final String URL = "http://10.236.38.232/Prueba/src/api/guardarMedicion.php?";
+    private static final String URL2 = "http://10.236.38.232/sp3/src/api/guardarsonda.php";
     private static final int INTERVALO_ENVIO_MS = 10000; // Intervalo de 10 segundos
     private static long ultimaEjecucion = 0; // Almacena el tiempo de la última ejecución
 
@@ -61,4 +62,34 @@ public class Server {
         } else {
         }
     }
+    public static void guardarSonda(final String MACsensor, RequestQueue requestQueue) {
+        StringRequest stringRequest = new StringRequest(
+                Request.Method.POST,    // Método HTTP (POST).
+                URL2,                // URL del servidor.
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+                    }
+                },
+                new Response.ErrorListener() {
+                    @Override
+                    public void onErrorResponse(VolleyError error) {
+                        Log.d("Errores.", error.toString());
+                    }
+                }
+
+        ) {
+            @Override
+            protected Map<String, String> getParams() throws AuthFailureError {
+                Map<String, String> params = new HashMap<>();
+                // Se definen los parámetros a enviar en la solicitud .
+                params.put("MACsensor", MACsensor);
+                return params;
+
+            }
+        };
+        // Se agrega la solicitud a la cola de solicitudes para su procesamiento.
+        requestQueue.add(stringRequest);
+    }
+
 }
